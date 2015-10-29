@@ -144,7 +144,7 @@ void handlerCmd(char *cmd[]){
     if(cmd[1]!=NULL&&strlen(cmd[1])==0)
         cmd[1]=NULL;
     
-    if(strcmp(cmd[0], "cd")==0){
+    if(strcmp(cmd[0], "cd")==0||strcmp(cmd[0], "CD")==0){
         cd(cmd);
     } else if(strcmp(cmd[0], "exit")==0){
         exitsh();
@@ -183,13 +183,12 @@ void cd(char *cmd[]){
 }
 
 void exitsh(){
-    // 这里应该还有一些东西没写
     printf("goodbye\n");
     exit(0);
 }
 
 void myfork(char *cmd[]){
-    //signal (SIGTTOU, SIG_IGN);
+    signal (SIGTTOU, SIG_IGN);
     
     int status;
     forkNum = 1;
@@ -397,30 +396,26 @@ void signalHandlering(){
 }
 
 void sigint_handler(int sig){
-    //printf("%d\n",getgid());
-    int i;
-    for(i=0;i<forkNum;i++){
-        int result=kill(pid[i], SIGINT);
-        if(result==-1){
-            perror( "kill" );
-        }
+    int result=kill(-1*pid[0], SIGINT);
+    if(result==-1){
+        perror( "kill" );
     }
+    
+    tcsetpgrp(STDIN_FILENO, getpid());
+    
 }
 
 void sigtstp_handler(int sig){
-    //printf("\n");
-    
-    int i;
-    for(i=0;i<forkNum;i++){
-        int result=kill(pid[i], SIGTSTP);
-        if(result==-1){
-            perror( "suspend" );
-        }
+    int result=kill(-1*pid[0], SIGTSTP);
+    if(result==-1){
+        perror( "suspend" );
     }
+    
+    tcsetpgrp(STDIN_FILENO, getpid());
+    
 }
 
 void sigchld_handler(int sig){
-    tcsetpgrp(0, getpid());
     int status;
     waitpid(-1, &status, WNOHANG);
 }
@@ -428,22 +423,25 @@ void sigchld_handler(int sig){
 void fg(){
     signal (SIGTTOU, SIG_IGN);
     
-    int pid=0;
+    int pidtmp=0;
     int i;
     for(i=0;i<strlen(cmd[1]);i++){
-        pid*=10;
-        pid+=cmd[1][i]-'0';
+        pidtmp*=10;
+        pidtmp+=cmd[1][i]-'0';
     }
     
-    int result=kill(-1*getpgid(pid), SIGCONT);
+    // 记录前台进程组id
+    pid[0]=getpgid(pidtmp);
+    
+    int result=kill(-1*getpgid(pidtmp), SIGCONT);
     if(result==-1){
         perror( "kill" );
     }
-    tcsetpgrp(STDIN_FILENO, getpgid(pid));
+    tcsetpgrp(STDIN_FILENO, getpgid(pidtmp));
     
     // 前台执行，所以要wait
     int status;
-    waitpid(-1*getpgid(pid), &status, WUNTRACED);
+    waitpid(-1*getpgid(pidtmp), &status, WUNTRACED);
     
     // 还控制权
     tcsetpgrp(STDIN_FILENO, getpid());
@@ -451,18 +449,17 @@ void fg(){
 }
 
 void bg(){
-    int pid=0;
+    int pidtmp=0;
     int i;
     for(i=0;i<strlen(cmd[1]);i++){
-        pid*=10;
-        pid+=cmd[1][i]-'0';
+        pidtmp*=10;
+        pidtmp+=cmd[1][i]-'0';
     }
     
-    int result=kill(-1*getpgid(pid), SIGCONT);
+    int result=kill(-1*getpgid(pidtmp), SIGCONT);
     if(result==-1){
         perror( "kill" );
     }
-
 }
 
 void killProcess(){
@@ -472,7 +469,11 @@ void killProcess(){
         i=1;
     else
         i=0;
-    for(;i<strlen(cmd[1]);i++){
+    
+    //printf("length: %lu str: %s\n",strlen(cmd[1]),cmd[1]);
+    
+    for(i=0;i<strlen(cmd[1]);i++){
+        //printf("%c\n",cmd[1][i]);
         pid*=10;
         pid+=cmd[1][i]-'0';
     }
@@ -483,6 +484,10 @@ void killProcess(){
     if(result==-1){
         perror( "kill" );
     }
+    
+    // 处理一个神奇的bug。。
+    char tmp[1000];
+    fgets(tmp, 1000, stdin);
     
 }
 
